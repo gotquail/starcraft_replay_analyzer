@@ -1,0 +1,12 @@
+Stats of interest:
+	- Number of creep tumors created in first 10 minutes
+		- Possible in SCElight: Commands list, filter "creep", look at number of rows
+	- 
+ 	- Larvae stats
+ 		- Average lifespan of larvae
+ 		- Total time hatcheries have >= 3 larvae
+ 		- % time hatcheries are larvae capped
+ 		- total number or larvae "lost" due to larvae cap
+ 		- Don't count time when supply capped towards larvae capped.
+	- measurement of macro hotkey usage
+		- avg time between macro hotkey selection.
