@@ -1,6 +1,6 @@
+import os
 import sys
 import math
-import datetime
 
 import sc2reader
 from sc2reader.objects import Player
@@ -8,9 +8,19 @@ from sc2reader.resources import Replay
 
 import techlabreactor
 
+REPLAY_FOLDER_PATH = "C:\\Users\\ray\\Documents\\StarCraft II\\Accounts\\851727\\1-S2-1-328876\\Replays\\Multiplayer"
+
 def main():
-    path = sys.argv[1]
-    replay = sc2reader.load_replay(path)
+
+    path_to_replay_file = ""
+    if len(sys.argv) < 2:
+        path_to_replay_file = _get_path_to_most_recent_replay()
+    else:
+        path_to_replay_file = sys.argv[1]
+
+    print("Path: ", path_to_replay_file)
+
+    replay = sc2reader.load_replay(path_to_replay_file)
 
     print("\nAnalyzing replay: {}".format(replay.filename))
 
@@ -30,7 +40,16 @@ def main():
 
         larvae_efficiency(player, replay)
 
+        print_larvae_timeline(player, replay)
+
     return 0
+
+def _get_path_to_most_recent_replay():
+    replay_file_names = os.listdir(REPLAY_FOLDER_PATH)
+    replay_file_full_paths = [os.path.join(REPLAY_FOLDER_PATH, replay_file_name) for replay_file_name in replay_file_names]
+
+    most_recent_replay_filename = max(replay_file_full_paths, key=os.path.getctime)
+    return most_recent_replay_filename
 
 def larvae_efficiency(player: Player, replay: Replay) -> int:
 
@@ -65,24 +84,35 @@ def larvae_efficiency(player: Player, replay: Replay) -> int:
     for hatchery in hatcheries:
         hatch_number += 1
 
-        start_time = hatchery["started_at"]
-        end_time = hatchery["died_at"] if "died_at" in hatchery else _frame_to_second(replay.frames, replay)
+        hatchery_start_time = hatchery["started_at"]
+        hatchery_end_time = hatchery["died_at"] if "died_at" in hatchery else _frame_to_second(replay.frames, replay)
 
         # We want ints so we can use an array where each bucket is a second,
         # so we can reconstruct our larvae timeline.
-        start_time = int(round(start_time))
-        end_time = int(round(end_time))
-        hatch_lifetime = end_time - start_time
+        hatchery_start_time = int(round(hatchery_start_time))
+        hatchery_end_time = int(round(hatchery_end_time))
+        hatch_lifetime = hatchery_end_time - hatchery_start_time
 
         larvae_timeline = [0] * hatch_lifetime
 
         for larva in hatchery["larvae"]:
             larva_start_time = int(round(larva["start_time"]))
-            larvae_timeline[larva_start_time - start_time] += 1
+            larva_start_time_in_timeline = larva_start_time - hatchery_start_time
+            if larva_start_time_in_timeline < 0:
+                larva_start_time_in_timeline = 0
+            if larva_start_time_in_timeline >= hatch_lifetime:
+                larva_start_time_in_timeline = hatch_lifetime - 1
+
+            larvae_timeline[larva_start_time_in_timeline] += 1
 
             if "end_time" in larva:
                 larva_end_time = int(round(larva["end_time"]))
-                larvae_timeline[larva_end_time - start_time] -= 1
+                larva_end_time_in_timeline = larva_end_time - hatchery_start_time
+                if larva_end_time_in_timeline < 0:
+                    larva_end_time_in_timeline = 0
+                if larva_end_time_in_timeline >= hatch_lifetime:
+                    larva_end_time_in_timeline = hatch_lifetime - 1
+                larvae_timeline[larva_end_time_in_timeline] -= 1
 
         larvae_total = 0
         num_timesteps_with_max_larvae = 0
@@ -92,10 +122,53 @@ def larvae_efficiency(player: Player, replay: Replay) -> int:
                 num_timesteps_with_max_larvae += 1
 
         print("\n\tHatchery #{}:".format(hatch_number))
-        print("\tCompleted at: {}s".format(start_time))
+        print("\tCompleted at: {}s".format(hatchery_start_time))
         print("\tTotal larvae spawned: {}".format(len(hatchery["larvae"])))
         print("\tTime larvae capped: {:.1%}".format(num_timesteps_with_max_larvae / hatch_lifetime))
         print("\tNum larvae missed due to being capped: {}".format(int(num_timesteps_with_max_larvae / 11)))
+
+    return 0
+
+def print_larvae_timeline(player: Player, replay: Replay) -> int:
+
+    larvae_data = _get_larvae_data(player, replay)
+
+    MAX_TIMELINE_LENGTH = 900 # seconds
+    timeline_end_time = min(MAX_TIMELINE_LENGTH, int(round(_frame_to_second(replay.frames, replay))))
+
+    larvae_timeline = [0] * timeline_end_time
+
+    for larva in larvae_data.values():
+        larva_start_time = int(round(larva["start_time"]))
+        if larva_start_time < 0:
+            larva_start_time = 0
+        if larva_start_time >= timeline_end_time:
+            larva_start_time = timeline_end_time - 1
+        larvae_timeline[larva_start_time] += 1
+
+        if "end_time" in larva:
+            larva_end_time = int(round(larva["end_time"]))
+            if larva_end_time < 0:
+                larva_end_time = 0
+            if larva_end_time >= timeline_end_time:
+                larva_end_time = timeline_end_time - 1
+            larvae_timeline[larva_end_time] -= 1
+
+    TIMESTEP_SIZE = 5 # seconds
+    print("\nLarvae Timeline:")
+    num_larvae = 0
+    position_in_timeline = 0
+    while position_in_timeline < len(larvae_timeline):
+        num_larvae += larvae_timeline[position_in_timeline]
+
+        if position_in_timeline % TIMESTEP_SIZE == 0:
+            minutes, seconds = divmod(position_in_timeline, 60)
+            timestamp_string = "%02d:%02d" % (minutes, seconds)
+            larvae_graphic_string = "X" * num_larvae
+            print("{}: {}".format(timestamp_string, larvae_graphic_string))
+
+        position_in_timeline += 1
+
 
     return 0
 
